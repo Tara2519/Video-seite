@@ -1,52 +1,40 @@
-const express = require("express");
-const multer = require("multer");
-const path = require("path");
-const fs = require("fs");
+const express = require('express');
+const multer = require('multer');
+const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Ordner für Uploads
-const uploadFolder = path.join(__dirname, "uploads");
-if (!fs.existsSync(uploadFolder)) fs.mkdirSync(uploadFolder);
+// Public-Ordner für HTML, CSS, JS
+app.use(express.static('public'));
 
-// Multer Speicher-Konfiguration (max 2GB)
+// Uploads-Ordner öffentlich machen
+app.use('/uploads', express.static('uploads'));
+
+// Speicher-Konfiguration für Multer
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadFolder),
-  filename: (req, file, cb) => cb(null, Date.now() + path.extname(file.originalname)),
+  destination: function (req, file, cb) {
+    cb(null, 'uploads/'); // Speicherort
+  },
+  filename: function (req, file, cb) {
+    cb(null, Date.now() + '-' + file.originalname); // eindeutiger Dateiname
+  }
 });
 
-const upload = multer({
-  storage,
-  limits: { fileSize: 2 * 1024 * 1024 * 1024 }, // 2GB
+const upload = multer({ storage: storage });
+
+// Upload-Route für Videos
+app.post('/upload', upload.single('video'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).send('❌ Kein Video hochgeladen!');
+  }
+  res.send(`
+    ✅ Video erfolgreich hochgeladen! <br>
+    <a href="/uploads/${req.file.filename}">Video ansehen</a>
+  `);
 });
 
-// Statische Dateien
-app.use(express.static(path.join(__dirname, "public")));
-app.use("/uploads", express.static(uploadFolder));
-
-// Upload-Route mit Fehlerbehandlung
-app.post("/upload", (req, res) => {
-  upload.single("video")(req, res, (err) => {
-    if (err instanceof multer.MulterError) {
-      if (err.code === "LIMIT_FILE_SIZE") return res.send("❌ Datei zu groß! Max. 2GB.");
-      return res.send("❌ Multer Error: " + err.message);
-    } else if (err) {
-      return res.send("❌ Fehler beim Upload: " + err.message);
-    }
-    res.redirect("/");
-  });
+// Start Server
+app.listen(PORT, () => {
+  console.log(`🚀 Server läuft auf Port ${PORT}`);
 });
-
-// Liste hochgeladener Videos
-app.get("/list-videos", (req, res) => {
-  fs.readdir(uploadFolder, (err, files) => {
-    if (err) return res.status(500).send("Fehler beim Lesen der Videos.");
-    let fileLinks = files.map(
-      (f) => `<li><a href="/uploads/${f}" target="_blank">${f}</a></li>`
-    );
-    res.send(`<h1>Alle Videos</h1><ul>${fileLinks.join("")}</ul>`);
-  });
-});
-
-app.listen(PORT, () => console.log(`🚀 Server läuft auf Port ${PORT}`));
